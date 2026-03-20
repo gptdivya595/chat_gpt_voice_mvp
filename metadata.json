@@ -1,0 +1,7 @@
+{
+  "name": "ChatGPT",
+  "description": "A minimalist AI voice assistant interface with conversational screens and quick action cards.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
