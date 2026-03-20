@@ -32,7 +32,7 @@ import { motion, AnimatePresence } from "motion/react";
 
 // --- Types ---
 
-type Screen = "lock" | "home" | "app";
+type Screen = "lock" | "home" | "assistant-landing" | "assistant-chat";
 
 interface ActionCardProps {
   icon: ReactNode;
@@ -145,6 +145,7 @@ export default function App() {
 
           if (transcript.includes("hey chatgpt") || transcript.includes("hey chat gpt")) {
             setIsListening(true);
+            speak("Listening");
             recognition.stop();
             // Auto-open app after a brief listening period
             setTimeout(() => {
@@ -165,6 +166,7 @@ export default function App() {
       const triggerTimer = setTimeout(() => {
         if (!isListening) {
           setIsListening(true);
+          speak("Listening");
           // Auto-close listening after 4 seconds if not clicked
           setTimeout(() => setIsListening(false), 4000);
         }
@@ -174,28 +176,44 @@ export default function App() {
   }, [screen, isListening]);
 
   const openApp = () => {
-    setScreen("app");
+    setScreen("assistant-landing");
     setIsListening(false);
-    // Speak greeting when app opens
-    setTimeout(() => {
-      speak("Hi, How can I help you today?");
-    }, 500);
   };
 
-  const goHome = () => setScreen("home");
+  const goHome = () => {
+    setScreen("home");
+    setIsListening(false);
+  };
+
+  const goToAssistantChat = () => {
+    setScreen("assistant-chat");
+    speak("Hi, How can I help you today?");
+  };
+
+  // Auto-transition from landing → chat (stays inside assistant shell)
+  useEffect(() => {
+    if (screen !== "assistant-landing") return;
+    const timer = setTimeout(() => {
+      setScreen("assistant-chat");
+      speak("Hi, How can I help you today?");
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [screen]);
+
+  const inAssistant = screen === "assistant-landing" || screen === "assistant-chat";
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 font-sans">
       {/* Mobile Device Frame */}
       <div className="relative w-[375px] h-[812px] bg-black rounded-[3rem] shadow-[0_0_0_8px_#1a1a1a,0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden border-[4px] border-zinc-800">
         
-        {/* Notch */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-7 bg-black rounded-b-3xl z-[100] flex items-center justify-center">
-          <div className="w-12 h-1 bg-zinc-900 rounded-full" />
+        {/* Notch — pointer-events-none so it never blocks taps */}
+        <div className="pointer-events-none absolute top-0 left-1/2 z-[100] flex h-7 w-40 -translate-x-1/2 items-center justify-center rounded-b-3xl bg-black">
+          <div className="h-1 w-12 rounded-full bg-zinc-900" />
         </div>
 
-        {/* Status Bar */}
-        <div className="absolute top-0 left-0 right-0 h-12 px-8 flex justify-between items-center z-[90] text-white text-[13px] font-semibold">
+        {/* Status bar: does not capture taps — was blocking assistant header (X) */}
+        <div className="pointer-events-none absolute top-0 left-0 right-0 z-[90] h-12 px-8 flex justify-between items-center text-white text-[13px] font-semibold">
           <span>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           <div className="flex items-center gap-1.5">
             <Signal className="w-4 h-4" />
@@ -204,8 +222,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* Screen Content */}
-        <div className="relative w-full h-full bg-zinc-900 overflow-hidden">
+        {/* Screen Content — lift above status bar (z-90) while assistant is open so header taps register */}
+        <div
+          className={`relative h-full w-full overflow-hidden bg-zinc-900 ${inAssistant ? "z-[95]" : ""}`}
+        >
           
           {/* Wallpaper (Shared across Home/Lock) */}
           <div className="absolute inset-0 z-0">
@@ -225,7 +245,7 @@ export default function App() {
                 initial={{ opacity: 0, scale: 1.1 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="relative z-10 w-full h-full flex flex-col px-6 pt-24"
+                className="relative z-10 flex h-full w-full flex-col px-6 pt-24"
               >
                 {/* Date/Time Header */}
                 <div className="mb-10 px-2">
@@ -290,61 +310,180 @@ export default function App() {
               </motion.div>
             )}
 
-            {screen === "app" && (
+            {inAssistant && (
               <motion.div
-                key="app"
+                key="assistant-shell"
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="relative z-20 w-full h-full bg-white flex flex-col"
+                transition={{ type: "spring", damping: 28, stiffness: 220 }}
+                className="absolute inset-0 z-[95] flex flex-col bg-white"
               >
-                {/* App Header */}
-                <header className="flex justify-between items-center px-6 h-16 border-b border-zinc-100 pt-4">
-                  <div className="flex items-center gap-3">
-                    <button onClick={goHome} className="p-1 hover:bg-zinc-100 rounded-full"><X className="w-5 h-5" /></button>
-                    <h1 className="text-sm font-bold tracking-tight">ChatGPT</h1>
-                  </div>
-                  <div className="w-7 h-7 rounded-full bg-zinc-100 overflow-hidden border border-zinc-200">
-                    <img src="https://picsum.photos/seed/user/50/50" alt="User" className="w-full h-full object-cover" />
-                  </div>
-                </header>
+                <div className="relative min-h-0 flex-1 overflow-hidden">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {screen === "assistant-landing" && (
+                      <motion.div
+                        key="assistant-landing"
+                        initial={{ opacity: 1, x: 0 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -28 }}
+                        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                        className="absolute inset-0 flex flex-col bg-white"
+                      >
+                        <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-100 px-6 pt-4">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={goHome}
+                              className="-m-2 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 hover:bg-zinc-100 active:bg-zinc-200"
+                              aria-label="Close and return home"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                            <h1 className="text-sm font-bold tracking-tight">ChatGPT</h1>
+                          </div>
+                          <div className="h-7 w-7 overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
+                            <img src="https://picsum.photos/seed/user/50/50" alt="" className="h-full w-full object-cover" />
+                          </div>
+                        </header>
 
-                {/* App Content */}
-                <div className="flex-grow flex flex-col items-center justify-center px-6 space-y-10 pb-20">
-                  <div className="flex flex-col items-center text-center space-y-6">
-                    <Waveform />
-                    <h2 className="text-3xl font-bold tracking-tight leading-tight">
-                      Hi, How can I help you today?
-                    </h2>
-                    <p className="text-zinc-500 text-sm font-medium">AI Assistant is listening...</p>
-                  </div>
+                        <div className="flex min-h-0 flex-1 flex-col items-center space-y-8 overflow-y-auto px-6 pt-12">
+                          <div className="flex flex-col items-center space-y-4">
+                            <motion.button
+                              type="button"
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={goToAssistantChat}
+                              className="group relative flex h-32 w-32 items-center justify-center rounded-full border border-zinc-50 bg-white shadow-[0_10px_40px_rgba(0,0,0,0.08)]"
+                            >
+                              <div className="absolute inset-0 scale-0 rounded-full bg-zinc-100 transition-transform duration-300 group-hover:scale-100" />
+                              <Mic className="relative z-10 h-10 w-10 text-zinc-900" strokeWidth={1.5} />
+                            </motion.button>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400">Tap to speak</span>
+                          </div>
 
-                  <div className="w-full space-y-3">
-                    <ActionCard 
-                      icon={<Calendar className="w-5 h-5 text-zinc-600" />} 
-                      title="Check my schedule" 
-                      description="What's on for tomorrow?" 
-                    />
-                    <ActionCard 
-                      icon={<Lightbulb className="w-5 h-5 text-zinc-600" />} 
-                      title="Draft a brief" 
-                      description="For the new project" 
-                    />
-                  </div>
-                </div>
+                          <div className="w-full space-y-3 pb-4">
+                            <ActionCard
+                              icon={<ImageIcon className="h-5 w-5 text-zinc-600" />}
+                              title="Create image"
+                              description="Visualize any concept instantly"
+                            />
+                            <ActionCard
+                              icon={<BookOpen className="h-5 w-5 text-zinc-600" />}
+                              title="Write a story"
+                              description="Generate creative narratives"
+                            />
+                            <ActionCard
+                              icon={<FileText className="h-5 w-5 text-zinc-600" />}
+                              title="Summarize text"
+                              description="Condense long articles quickly"
+                            />
+                            <ActionCard
+                              icon={<Lightbulb className="h-5 w-5 text-zinc-600" />}
+                              title="Explain a concept"
+                              description="Understand complex topics simply"
+                            />
+                          </div>
+                        </div>
 
-                {/* App Bottom Bar */}
-                <div className="p-4 pb-8 border-t border-zinc-100">
-                  <div className="bg-zinc-100 rounded-full p-1.5 flex items-center gap-2">
-                    <button className="w-8 h-8 flex items-center justify-center text-zinc-400"><Plus className="w-5 h-5" /></button>
-                    <input 
-                      type="text" 
-                      placeholder="Message..." 
-                      className="flex-grow bg-transparent border-none focus:ring-0 text-sm py-1.5"
-                    />
-                    <button className="w-8 h-8 bg-zinc-900 text-white rounded-full flex items-center justify-center"><ArrowUp className="w-4 h-4" /></button>
-                  </div>
+                        <div className="shrink-0 border-t border-zinc-100 p-4">
+                          <div className="flex items-center gap-2 rounded-full bg-zinc-100 p-1.5">
+                            <button type="button" className="flex h-8 w-8 items-center justify-center text-zinc-400">
+                              <Plus className="h-5 w-5" />
+                            </button>
+                            <input
+                              type="text"
+                              placeholder="Message ChatGPT..."
+                              className="min-w-0 flex-1 border-none bg-transparent py-1.5 text-sm focus:ring-0"
+                            />
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex h-16 shrink-0 items-center justify-around border-t border-zinc-100 px-6 pb-2">
+                          <MessageSquare className="h-6 w-6 text-zinc-400" />
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900">
+                            <Mic className="h-5 w-5 text-white" />
+                          </div>
+                          <Compass className="h-6 w-6 text-zinc-400" />
+                          <User className="h-6 w-6 text-zinc-400" />
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {screen === "assistant-chat" && (
+                      <motion.div
+                        key="assistant-chat"
+                        initial={{ opacity: 0, x: 36 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 36 }}
+                        transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                        className="absolute inset-0 flex flex-col bg-white"
+                      >
+                        <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-100 px-6 pt-4">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={goHome}
+                              className="-m-2 flex min-h-11 min-w-11 items-center justify-center rounded-full p-2 hover:bg-zinc-100 active:bg-zinc-200"
+                              aria-label="Close and return home"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                            <h1 className="text-sm font-bold tracking-tight">ChatGPT</h1>
+                          </div>
+                          <div className="h-7 w-7 overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
+                            <img src="https://picsum.photos/seed/user/50/50" alt="" className="h-full w-full object-cover" />
+                          </div>
+                        </header>
+
+                        <div className="flex min-h-0 flex-1 flex-col items-center justify-center space-y-10 overflow-y-auto px-6 pb-20">
+                          <div className="flex flex-col items-center space-y-6 text-center">
+                            <Waveform />
+                            <h2 className="text-3xl font-bold leading-tight tracking-tight">Hi, How can I help you today?</h2>
+                            <p className="text-sm font-medium text-zinc-500">AI Assistant is listening...</p>
+                          </div>
+
+                          <div className="w-full space-y-3">
+                            <ActionCard
+                              icon={<Calendar className="h-5 w-5 text-zinc-600" />}
+                              title="Check my schedule"
+                              description="What's on for tomorrow?"
+                            />
+                            <ActionCard
+                              icon={<Lightbulb className="h-5 w-5 text-zinc-600" />}
+                              title="Draft a brief"
+                              description="For the new project"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 border-t border-zinc-100 p-4 pb-8">
+                          <div className="flex items-center gap-2 rounded-full bg-zinc-100 p-1.5">
+                            <button type="button" className="flex h-8 w-8 items-center justify-center text-zinc-400">
+                              <Plus className="h-5 w-5" />
+                            </button>
+                            <input
+                              type="text"
+                              placeholder="Message..."
+                              className="min-w-0 flex-1 border-none bg-transparent py-1.5 text-sm focus:ring-0"
+                            />
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </motion.div>
             )}
@@ -385,10 +524,23 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* Home Indicator */}
-          <div 
-            onClick={goHome}
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1.5 bg-zinc-400/30 rounded-full z-[110] cursor-pointer hover:bg-zinc-400/50 transition-colors" 
+          {/* Home indicator: only tappable on home so it does not steal taps from the assistant */}
+          <div
+            role={screen === "home" ? "button" : undefined}
+            tabIndex={screen === "home" ? 0 : undefined}
+            onClick={screen === "home" ? goHome : undefined}
+            onKeyDown={
+              screen === "home"
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") goHome();
+                  }
+                : undefined
+            }
+            className={`absolute bottom-2 left-1/2 z-[110] h-1.5 w-32 -translate-x-1/2 rounded-full bg-zinc-400/30 transition-colors ${
+              screen === "home"
+                ? "cursor-pointer hover:bg-zinc-400/50"
+                : "pointer-events-none"
+            }`}
           />
         </div>
       </div>
